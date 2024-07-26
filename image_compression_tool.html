@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像圧縮ツール</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+        }
+        #dropZone {
+            border: 2px dashed #1a73e8;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        #dropZone:hover, #dropZone.dragover {
+            background-color: #e8f0fe;
+        }
+        .hidden {
+            display: none;
+        }
+        #qualitySlider {
+            width: 100%;
+            margin: 20px 0;
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 0;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        #downloadBtn {
+            background-color: #34a853;
+        }
+        #downloadBtn:hover {
+            background-color: #2d8e47;
+        }
+        #errorMessage {
+            color: #d93025;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .file-list {
+            margin: 20px 0;
+        }
+        .file-item {
+            background-color: #e8f0fe;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .file-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+        .progress {
+            width: 0%;
+            height: 10px;
+            background-color: #1a73e8;
+            border-radius: 5px;
+            transition: width 0.3s ease;
+        }
+        .thumbnails {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        .thumbnail {
+            width: 48%;
+            text-align: center;
+        }
+        .thumbnail img {
+            max-width: 100%;
+            max-height: 150px;
+            object-fit: contain;
+        }
+        .note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>画像圧縮ツール</h1>
+        <p>このツールは、JPEG、PNG、BMP画像を圧縮し、ファイルサイズを削減します。画質を維持しながら、効率的に圧縮を行います。
+デバックしきれていません。予期せぬ不具合が見つかったり追加機能の要望がございましたら廣野までご連絡下さい。</p>
+        <div class="note">
+            注意: HEICファイルは現在サポートされていません。他の形式に変換してからアップロードしてください。
+        </div>
+        <div id="dropZone">
+            ここに画像をドラッグ＆ドロップするか、クリックしてファイルを選択してください
+            <input type="file" id="fileInput" accept="image/jpeg,image/png,image/bmp" multiple style="display: none;">
+        </div>
+        <div id="errorMessage" class="hidden"></div>
+        <div id="controls" class="hidden">
+            <label for="qualitySlider">圧縮品質: <span id="qualityValue">90</span>%</label>
+            <input type="range" id="qualitySlider" min="0" max="100" value="90">
+            <button id="compressBtn">圧縮（爆速）</button>
+            <button id="compressTo1MBBtn">全てのファイルを1MBに圧縮（時間かかります）</button>
+            <button id="compressTo900KBBtn">全てのファイルを450KBに圧縮（時間かかります）</button> <!-- 新しいボタン -->
+        </div>
+        <div id="fileList" class="file-list"></div>
+        <button id="downloadBtn" class="hidden">圧縮された画像をZIPでダウンロード</button>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const controls = document.getElementById('controls');
+        const qualitySlider = document.getElementById('qualitySlider');
+        const qualityValue = document.getElementById('qualityValue');
+        const compressBtn = document.getElementById('compressBtn');
+        const fileList = document.getElementById('fileList');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const errorMessage = document.getElementById('errorMessage');
+
+        let selectedFiles = [];
+        let compressedFiles = [];
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorMessage.textContent = '';
+            errorMessage.classList.add('hidden');
+        }
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', handleFileDrop);
+        fileInput.addEventListener('change', handleFileSelect);
+        qualitySlider.addEventListener('input', updateQualityValue);
+        compressBtn.addEventListener('click', compressImages);
+        downloadBtn.addEventListener('click', downloadCompressedImagesAsZip);
+        document.getElementById('compressTo1MBBtn').addEventListener('click', compressImagesTo1MB); // 新しいイベントリスナー
+        document.getElementById('compressTo900KBBtn').addEventListener('click', compressImagesTo900KB); // 新しいイベントリスナー
+
+        function handleFileDrop(e) {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            processFiles(files);
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            processFiles(files);
+        }
+
+        function processFiles(files) {
+            hideError();
+            selectedFiles = Array.from(files).filter(file => 
+                file.type === 'image/jpeg' || 
+                file.type === 'image/png' || 
+                file.type === 'image/bmp'
+            );
+            if (selectedFiles.length === 0) {
+                showError('サポートされている画像ファイル（JPEG、PNG、BMP）を選択してください。');
+                return;
+            }
+            updateFileList();
+            controls.classList.remove('hidden');
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <span>${file.name} (${formatFileSize(file.size)})</span>
+                    </div>
+                    <div class="progress-bar"><div class="progress" id="progress-${index}"></div></div>
+                    <div class="thumbnails">
+                        <div class="thumbnail">
+                            <p>圧縮前 (${file.type.split('/')[1].toUpperCase()})</p>
+                            <img id="original-${index}" alt="圧縮前">
+                        </div>
+                        <div class="thumbnail">
+                            <p>圧縮後 (JPEG)</p>
+                            <img id="compressed-${index}" alt="圧縮後">
+                            <p id="compressed-size-${index}"></p>
+                        </div>
+                    </div>
+                `;
+                fileList.appendChild(fileItem);
+                displayThumbnail(file, `original-${index}`);
+            });
+        }
+
+        function displayThumbnail(file, imgId) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.getElementById(imgId);
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateQualityValue() {
+            qualityValue.textContent = qualitySlider.value;
+        }
+
+        async function compressImages() {
+            if (selectedFiles.length === 0) {
+                showError('画像が選択されていません。');
+                return;
+            }
+
+            hideError();
+            compressedFiles = [];
+            const quality = parseInt(qualitySlider.value) / 100;
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                const compressedFile = await compressImage(file, quality, i);
+                compressedFiles.push(compressedFile);
+            }
+
+            downloadBtn.classList.remove('hidden');
+        }
+
+        async function compressImagesTo1MB() {
+            if (selectedFiles.length === 0) {
+                showError('画像が選択されていません。');
+                return;
+            }
+
+            hideError();
+            compressedFiles = [];
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                let quality = 1.0; // 初期品質を100%に設定
+                let compressedFile = await compressImage(file, quality, i);
+
+                // 1MB以下になるまで品質を調整
+                while (compressedFile.blob.size > 1048576 && quality > 0) {
+                    quality -= 0.05; // 品質を5%ずつ下げる
+                    compressedFile = await compressImage(file, quality, i);
+                }
+
+                compressedFiles.push(compressedFile);
+            }
+
+            downloadBtn.classList.remove('hidden');
+        }
+
+        async function compressImagesTo900KB() {
+            if (selectedFiles.length === 0) {
+                showError('画像が選択されていません。');
+                return;
+            }
+
+            hideError();
+            compressedFiles = [];
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                let quality = 1.0; // 初期品質を100%に設定
+                let compressedFile = await compressImage(file, quality, i);
+
+                // 900KB以下になるまで品質を調整
+                while (compressedFile.blob.size > 921600 && quality > 0) {
+                    quality -= 0.05; // 品質を5%ずつ下げる
+                    compressedFile = await compressImage(file, quality, i);
+                }
+
+                compressedFiles.push(compressedFile);
+            }
+
+            downloadBtn.classList.remove('hidden');
+        }
+
+        function compressImage(file, quality, index) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+                    
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                updateProgress(index, 100);
+                                displayCompressedThumbnail(blob, `compressed-${index}`);
+                                document.getElementById(`compressed-size-${index}`).textContent = `圧縮後: ${formatFileSize(blob.size)}`;
+                                resolve({
+                                    name: file.name.replace(/\.[^/.]+$/, "") + ".jpg",
+                                    blob: blob
+                                });
+                            } else {
+                                showError('画像の圧縮中にエラーが発生しました。');
+                                resolve(null);
+                            }
+                        },
+                        'image/jpeg',
+                        quality
+                    );
+                };
+                img.onerror = () => {
+                    showError('画像の読み込み中にエラーが発生しました。');
+                    resolve(null);
+                };
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        function displayCompressedThumbnail(blob, imgId) {
+            const url = URL.createObjectURL(blob);
+            const img = document.getElementById(imgId);
+            img.src = url;
+        }
+
+        function updateProgress(index, progress) {
+            const progressBar = document.getElementById(`progress-${index}`);
+            if (progressBar) {
+                progressBar.style.width = `${progress}%`;
+            }
+        }
+
+        async function downloadCompressedImagesAsZip() {
+            if (compressedFiles.length === 0) {
+                showError('圧縮された画像が見つかりません。');
+                return;
+            }
+
+            const zip = new JSZip();
+
+            compressedFiles.forEach(file => {
+                if (file) {
+                    zip.file(file.name, file.blob);
+                }
+            });
+
+            try {
+                const content = await zip.generateAsync({type: "blob"});
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "compressed_images.zip";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                showError('ZIPファイルの作成中にエラーが発生しました。');
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+            else return (bytes / 1048576).toFixed(2) + ' MB';
+        }
+    </script>
+</body>
+</html>
