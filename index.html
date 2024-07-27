@@ -8,6 +8,7 @@
         body {
             font-family: 'Hiragino Sans', 'Meiryo', sans-serif;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
@@ -22,6 +23,13 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             max-width: 800px;
             width: 100%;
+        }
+        .banner {
+            width: 100%;
+            max-width: 800px;
+            height: auto;
+            border-radius: 8px;
+            margin-bottom: 20px;
         }
         button {
             background-color: #008CBA;
@@ -41,6 +49,7 @@
 </head>
 <body>
     <div class="container">
+        <img src="Black Simple Geometric Discord Profile Banner.png" alt="Digital Space Lab Banner" class="banner">
         <h1>ツール ランディングページ</h1>
         <button onclick="window.location.href='image_compression_tool.html'">画像圧縮ツールへ</button>
         <button onclick="window.location.href='heic_to_jpg_tool.html'">HEIC to JPG 一括変換ツールへ</button>
