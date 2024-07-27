@@ -7,6 +7,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.3/heic2any.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <style>
+        :root {
+            --primary-color: #4a90e2;
+            --secondary-color: #50e3c2;
+            --background-color: #f5f7fa;
+            --text-color: #333;
+            --card-background: #ffffff;
+        }
         body {
             font-family: 'Hiragino Sans', 'Meiryo', sans-serif;
             display: flex;
@@ -14,39 +21,63 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            background-color: #f0f0f0;
+            background-color: var(--background-color);
+            color: var(--text-color);
         }
         .container {
             text-align: center;
-            background-color: white;
+            background-color: var(--card-background);
             padding: 2rem;
-            border-radius: 8px;
+            border-radius: 12px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            max-width: 800px;
+            max-width: 90%;
             width: 100%;
+            margin: 20px;
+        }
+        h1 {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
         }
         #fileInput {
             display: none;
         }
-        #convertButton {
-            background-color: #008CBA;
+        .button {
+            background-color: var(--primary-color);
             border: none;
             color: white;
-            padding: 15px 32px;
+            padding: 12px 24px;
             text-align: center;
             text-decoration: none;
             display: inline-block;
             font-size: 16px;
             margin: 4px 2px;
             cursor: pointer;
-            border-radius: 4px;
+            border-radius: 50px;
+            transition: background-color 0.3s, transform 0.1s;
         }
-        #fileList, #message {
+        .button:hover {
+            background-color: var(--secondary-color);
+        }
+        .button:active {
+            transform: scale(0.98);
+        }
+        #convertButton {
+            background-color: var(--secondary-color);
+        }
+        #fileList {
             margin-top: 1rem;
             text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
         }
         #message {
+            margin-top: 1rem;
             font-weight: bold;
+            color: var(--primary-color);
         }
         #progressContainer {
             margin-top: 1rem;
@@ -54,42 +85,51 @@
         }
         #progressBar {
             width: 100%;
-            height: 20px;
-            background-color: #f0f0f0;
-            border-radius: 10px;
+            height: 10px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
             overflow: hidden;
         }
         #progressBarFill {
             height: 100%;
-            background-color: #4CAF50;
+            background-color: var(--secondary-color);
             width: 0%;
             transition: width 0.3s ease-in-out;
         }
-        .drop-zone {
-            border: 2px dashed #ccc;
-            border-radius: 20px;
-            width: 100%;
-            padding: 20px;
-            text-align: center;
-            margin: 20px 0;
-            transition: background-color 0.3s ease;
-            cursor: pointer;
+        #progressText {
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
         }
-        .drop-zone.dragover {
-            background-color: #e9e9e9;
-            border-color: #999;
+        .file-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .file-icon {
+            margin-right: 10px;
+            color: var(--primary-color);
+        }
+        @media (max-width: 600px) {
+            .container {
+                padding: 1rem;
+            }
+            h1 {
+                font-size: 1.5rem;
+            }
+            .button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>HEIC to JPG 一括変換ツール</h1>
-        <div class="drop-zone" id="dropZone">
-            <p>ここにHEICファイルをドラッグ＆ドロップするか、クリックしてファイルを選択してください</p>
-            <input type="file" id="fileInput" accept=".heic" multiple />
-        </div>
+        <input type="file" id="fileInput" accept=".heic" multiple />
+        <button id="selectButton" class="button">HEICファイルを選択</button>
         <div id="fileList"></div>
-        <button id="convertButton" style="display: none;">JPGに変換してZIPでダウンロード</button>
+        <button id="convertButton" class="button" style="display: none;">JPGに変換してZIPでダウンロード</button>
         <div id="progressContainer">
             <div id="progressBar">
                 <div id="progressBarFill"></div>
@@ -100,8 +140,8 @@
     </div>
 
     <script>
-        const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
+        const selectButton = document.getElementById('selectButton');
         const fileList = document.getElementById('fileList');
         const convertButton = document.getElementById('convertButton');
         const message = document.getElementById('message');
@@ -109,64 +149,32 @@
         const progressBarFill = document.getElementById('progressBarFill');
         const progressText = document.getElementById('progressText');
 
-        // ドラッグ&ドロップイベントの設定
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, highlight, false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, unhighlight, false);
-        });
-
-        function highlight() {
-            dropZone.classList.add('dragover');
-        }
-
-        function unhighlight() {
-            dropZone.classList.remove('dragover');
-        }
-
-        dropZone.addEventListener('drop', handleDrop, false);
-
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
-        }
-
-        dropZone.addEventListener('click', () => {
+        selectButton.addEventListener('click', () => {
             fileInput.click();
         });
 
         fileInput.addEventListener('change', (event) => {
-            handleFiles(event.target.files);
-        });
-
-        function handleFiles(files) {
+            const files = event.target.files;
             if (files.length > 0) {
                 fileList.innerHTML = '<h3>選択されたファイル:</h3>';
                 for (let i = 0; i < files.length; i++) {
-                    fileList.innerHTML += `<div>${files[i].name}</div>`;
+                    fileList.innerHTML += `
+                        <div class="file-item">
+                            <span class="file-icon">📄</span>
+                            <span>${files[i].name}</span>
+                        </div>`;
                 }
                 convertButton.style.display = 'inline-block';
                 message.textContent = '';
             }
-        }
+        });
 
         convertButton.addEventListener('click', async () => {
             const files = fileInput.files;
             if (files.length > 0) {
                 message.textContent = '変換中...';
                 progressContainer.style.display = 'block';
+                convertButton.disabled = true;
                 const zip = new JSZip();
 
                 try {
@@ -201,6 +209,7 @@
                 }
 
                 progressContainer.style.display = 'none';
+                convertButton.disabled = false;
             }
         });
     </script>
